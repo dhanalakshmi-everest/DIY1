@@ -115,3 +115,15 @@ func getStoreProducts(db *sql.DB, storeId int) ([]product, error) {
 
 	return products, nil
 }
+
+func addProductToStore(db *sql.DB, storeId int, productId int) error {
+	_, err := db.Query(
+		"INSERT INTO store(store_id, product_id, is_avialable) VALUES($1, $2, $3) RETURNING store_id",
+		storeId, productId, true)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
