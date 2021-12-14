@@ -7,15 +7,14 @@ import (
 	// tom: for ensureTableExists
 	"log"
 
+	"bytes"
+	"encoding/json"
 	// tom: for TestEmptyTable and next functions (no go get is required"
 	"net/http"
 	// "net/url"
 	"net/http/httptest"
 	"strconv"
-	"encoding/json"
-	"bytes"
 	// "io/ioutil"
-
 )
 
 var a App
@@ -44,16 +43,24 @@ func ensureTableExists() {
 func clearTable() {
 	a.DB.Exec("DELETE FROM products")
 	a.DB.Exec("ALTER SEQUENCE products_id_seq RESTART WITH 1")
+	a.DB.Exec("DELETE FROM store")
 }
 
 const tableCreationQuery = `CREATE TABLE IF NOT EXISTS products
 (
-    id SERIAL,
+	id SERIAL,
     name TEXT NOT NULL,
     price NUMERIC(10,2) NOT NULL DEFAULT 0.00,
     CONSTRAINT products_pkey PRIMARY KEY (id)
-)`
+);
 
+CREATE TABLE IF NOT EXISTS store(
+	store_id INT,
+    product_id INT,
+    is_avialable BOOLEAN,
+    FOREIGN KEY(product_id) REFERENCES products(id)
+);
+`
 
 // tom: next functions added later, these require more modules: net/http net/http/httptest
 func TestEmptyTable(t *testing.T) {
@@ -127,7 +134,6 @@ func TestCreateProduct(t *testing.T) {
 	}
 }
 
-
 func TestGetProduct(t *testing.T) {
 	clearTable()
 	addProducts(1)
@@ -199,4 +205,33 @@ func TestDeleteProduct(t *testing.T) {
 	req, _ = http.NewRequest("GET", "/product/1", nil)
 	response = executeRequest(req)
 	checkResponseCode(t, http.StatusNotFound, response.Code)
+}
+
+func TestAddProductToStore(t *testing.T) {
+
+	clearTable()
+
+	var jsonStr = []byte(`{"name":"test product", "price": 11.22}`)
+	req, _ := http.NewRequest("POST", "/store/1", bytes.NewBuffer(jsonStr))
+	req.Header.Set("Content-Type", "application/json")
+
+	response := executeRequest(req)
+	checkResponseCode(t, http.StatusCreated, response.Code)
+
+	var m map[string]interface{}
+	json.Unmarshal(response.Body.Bytes(), &m)
+
+	if m["name"] != "test product" {
+		t.Errorf("Expected product name to be 'test product'. Got '%v'", m["name"])
+	}
+
+	if m["price"] != 11.22 {
+		t.Errorf("Expected product price to be '11.22'. Got '%v'", m["price"])
+	}
+
+	// the id is compared to 1.0 because JSON unmarshaling converts numbers to
+	// floats, when the target is a map[string]interface{}
+	if m["id"] != 1.0 {
+		t.Errorf("Expected product ID to be '1'. Got '%v'", m["id"])
+	}
 }
