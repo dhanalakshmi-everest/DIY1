@@ -235,3 +235,26 @@ func TestAddProductToStore(t *testing.T) {
 		t.Errorf("Expected product ID to be '1'. Got '%v'", m["id"])
 	}
 }
+
+func addProductsToStore(storeId int, count int) {
+	if count < 1 {
+		count = 1
+	}
+
+	for i := 0; i < count; i++ {
+		a.DB.Exec("INSERT INTO products(name, price) VALUES($1, $2)", "Product "+strconv.Itoa(i+1), (i+1.0)*10)
+		a.DB.Exec("INSERT INTO store(store_id, product_id, is_available) VALUES($1, $2)", storeId, 1, true)
+	}
+}
+
+func TestGetStoreProduct(t *testing.T) {
+	clearTable()
+
+	storeId := 1
+	addProductsToStore(storeId, 2)
+
+	req, _ := http.NewRequest("GET", "/store/"+strconv.Itoa(storeId)+"/products", nil)
+	response := executeRequest(req)
+
+	checkResponseCode(t, http.StatusOK, response.Code)
+}
