@@ -10,5 +10,6 @@ CREATE TABLE IF NOT EXISTS store(
     store_id INT,
     product_id INT,
     is_avialable BOOLEAN,
+    CONSTRAINT products_pkey PRIMARY KEY (store_id),
     FOREIGN KEY(product_id) REFERENCES products(id)
 );
