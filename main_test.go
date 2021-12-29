@@ -258,4 +258,30 @@ func TestGetStoreProduct(t *testing.T) {
 	response := executeRequest(req)
 
 	checkResponseCode(t, http.StatusOK, response.Code)
+
+	var products = make([]map[string]interface{}, 2)
+	json.Unmarshal(response.Body.Bytes(), &products)
+
+	if len(products) != 2 {
+		t.Errorf("Expected results containing 2 products. Got %d", len(products))
+	}
+
+	for index, product := range products {
+		productName := "Product " + strconv.Itoa(index+1)
+		if product["name"] != productName {
+			t.Errorf("Expected product name to be %v. Got '%v'", productName, product["name"])
+		}
+
+		producPrice := (index + 1) * 10
+		if product["price"] != producPrice {
+			t.Errorf("Expected product price to be %v. Got '%v'", producPrice, product["price"])
+		}
+
+		// the id is compared to 1.0 because JSON unmarshaling converts numbers to
+		// floats, when the target is a map[string]interface{}
+		productId := index + 1
+		if product["id"] != productId*1.0 {
+			t.Errorf("Expected product ID to be %v. Got '%v'", productId, product["id"])
+		}
+	}
 }
