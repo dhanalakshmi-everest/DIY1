@@ -8,7 +8,6 @@ import (
 	// "errors"
 )
 
-
 // tom: add backticks to json
 type product struct {
 	ID    int     `json:"id"`
@@ -91,4 +90,40 @@ func getProducts(db *sql.DB, start, count int) ([]product, error) {
 	}
 
 	return products, nil
+}
+
+func getStoreProducts(db *sql.DB, storeId int) ([]product, error) {
+	rows, err := db.Query(
+		"SELECT id, name, price FROM products INNER JOIN store ON store.product_id=products.id WHERE store.store_id=$1;",
+		storeId)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	products := []product{}
+
+	for rows.Next() {
+		var p product
+		if err := rows.Scan(&p.ID, &p.Name, &p.Price); err != nil {
+			return nil, err
+		}
+		products = append(products, p)
+	}
+
+	return products, nil
+}
+
+func addProductToStore(db *sql.DB, storeId int, productId int) error {
+	_, err := db.Query(
+		"INSERT INTO store(store_id, product_id, is_avialable) VALUES($1, $2, $3) RETURNING store_id",
+		storeId, productId, true)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

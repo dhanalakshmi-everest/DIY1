@@ -7,15 +7,14 @@ import (
 	"fmt"
 	"log"
 
+	"encoding/json"
 	// tom: for route handlers
 	"net/http"
-	"encoding/json"
 	"strconv"
 
 	// tom: go get required
 	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
-
 )
 
 type App struct {
@@ -84,7 +83,6 @@ func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	w.WriteHeader(code)
 	w.Write(response)
 }
-
 
 func (a *App) getProducts(w http.ResponseWriter, r *http.Request) {
 	count, _ := strconv.Atoi(r.FormValue("count"))
@@ -165,6 +163,50 @@ func (a *App) deleteProduct(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusOK, map[string]string{"result": "success"})
 }
 
+func (a *App) getStoreProducts(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	storeId, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid Store ID")
+		return
+	}
+
+	products, err := getStoreProducts(a.DB, storeId)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, products)
+}
+
+func (a *App) addProductToStore(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	storeId, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid Store ID")
+		return
+	}
+
+	var p product
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(&p); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+	defer r.Body.Close()
+
+	if err := p.createProduct(a.DB); err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := addProductToStore(a.DB, storeId, p.ID); err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondWithJSON(w, http.StatusCreated, p)
+}
 
 func (a *App) initializeRoutes() {
 	a.Router.HandleFunc("/products", a.getProducts).Methods("GET")
@@ -172,4 +214,7 @@ func (a *App) initializeRoutes() {
 	a.Router.HandleFunc("/product/{id:[0-9]+}", a.getProduct).Methods("GET")
 	a.Router.HandleFunc("/product/{id:[0-9]+}", a.updateProduct).Methods("PUT")
 	a.Router.HandleFunc("/product/{id:[0-9]+}", a.deleteProduct).Methods("DELETE")
+
+	a.Router.HandleFunc("/store/{id}/products", a.getStoreProducts).Methods("GET")
+	a.Router.HandleFunc("/store/{id}", a.addProductToStore).Methods("POST")
 }

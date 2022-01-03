@@ -7,15 +7,14 @@ import (
 	// tom: for ensureTableExists
 	"log"
 
+	"bytes"
+	"encoding/json"
 	// tom: for TestEmptyTable and next functions (no go get is required"
 	"net/http"
 	// "net/url"
 	"net/http/httptest"
 	"strconv"
-	"encoding/json"
-	"bytes"
 	// "io/ioutil"
-
 )
 
 var a App
@@ -44,16 +43,25 @@ func ensureTableExists() {
 func clearTable() {
 	a.DB.Exec("DELETE FROM products")
 	a.DB.Exec("ALTER SEQUENCE products_id_seq RESTART WITH 1")
+	a.DB.Exec("DELETE FROM store")
 }
 
 const tableCreationQuery = `CREATE TABLE IF NOT EXISTS products
 (
-    id SERIAL,
+	id SERIAL,
     name TEXT NOT NULL,
     price NUMERIC(10,2) NOT NULL DEFAULT 0.00,
     CONSTRAINT products_pkey PRIMARY KEY (id)
-)`
+);
 
+CREATE TABLE IF NOT EXISTS store(
+	store_id INT,
+    product_id INT,
+    is_avialable BOOLEAN,
+    CONSTRAINT store_pkey PRIMARY KEY (store_id, product_id),
+    FOREIGN KEY(product_id) REFERENCES products(id)
+);
+`
 
 // tom: next functions added later, these require more modules: net/http net/http/httptest
 func TestEmptyTable(t *testing.T) {
@@ -127,7 +135,6 @@ func TestCreateProduct(t *testing.T) {
 	}
 }
 
-
 func TestGetProduct(t *testing.T) {
 	clearTable()
 	addProducts(1)
@@ -199,4 +206,82 @@ func TestDeleteProduct(t *testing.T) {
 	req, _ = http.NewRequest("GET", "/product/1", nil)
 	response = executeRequest(req)
 	checkResponseCode(t, http.StatusNotFound, response.Code)
+}
+
+func TestAddProductToStore(t *testing.T) {
+
+	clearTable()
+
+	var jsonStr = []byte(`{"name":"test product", "price": 11.22}`)
+	req, _ := http.NewRequest("POST", "/store/1", bytes.NewBuffer(jsonStr))
+	req.Header.Set("Content-Type", "application/json")
+
+	response := executeRequest(req)
+	checkResponseCode(t, http.StatusCreated, response.Code)
+
+	var m map[string]interface{}
+	json.Unmarshal(response.Body.Bytes(), &m)
+
+	if m["name"] != "test product" {
+		t.Errorf("Expected product name to be 'test product'. Got '%v'", m["name"])
+	}
+
+	if m["price"] != 11.22 {
+		t.Errorf("Expected product price to be '11.22'. Got '%v'", m["price"])
+	}
+
+	// the id is compared to 1.0 because JSON unmarshaling converts numbers to
+	// floats, when the target is a map[string]interface{}
+	if m["id"] != 1.0 {
+		t.Errorf("Expected product ID to be '1'. Got '%v'", m["id"])
+	}
+}
+
+func addProductsToStore(storeId int, count int) {
+	if count < 1 {
+		count = 1
+	}
+
+	for i := 0; i < count; i++ {
+		a.DB.Exec("INSERT INTO products(name, price) VALUES($1, $2)", "Product "+strconv.Itoa(i+1), (i+1.0)*10)
+		a.DB.Exec("INSERT INTO store(store_id, product_id, is_available) VALUES($1, $2)", storeId, 1, true)
+	}
+}
+
+func TestGetStoreProduct(t *testing.T) {
+	clearTable()
+
+	storeId := 1
+	addProductsToStore(storeId, 2)
+
+	req, _ := http.NewRequest("GET", "/store/"+strconv.Itoa(storeId)+"/products", nil)
+	response := executeRequest(req)
+
+	checkResponseCode(t, http.StatusOK, response.Code)
+
+	var products = make([]map[string]interface{}, 2)
+	json.Unmarshal(response.Body.Bytes(), &products)
+
+	if len(products) != 2 {
+		t.Errorf("Expected results containing 2 products. Got %d", len(products))
+	}
+
+	for index, product := range products {
+		productName := "Product " + strconv.Itoa(index+1)
+		if product["name"] != productName {
+			t.Errorf("Expected product name to be %v. Got '%v'", productName, product["name"])
+		}
+
+		producPrice := (index + 1) * 10
+		if product["price"] != producPrice {
+			t.Errorf("Expected product price to be %v. Got '%v'", producPrice, product["price"])
+		}
+
+		// the id is compared to 1.0 because JSON unmarshaling converts numbers to
+		// floats, when the target is a map[string]interface{}
+		productId := index + 1
+		if product["id"] != productId*1.0 {
+			t.Errorf("Expected product ID to be %v. Got '%v'", productId, product["id"])
+		}
+	}
 }
